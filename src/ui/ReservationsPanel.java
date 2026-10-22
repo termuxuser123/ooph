@@ -18,15 +18,26 @@ public class ReservationsPanel extends JPanel {
     private JButton refbtn;
     private JLabel statuslbl;
     private WaitlistManager waitlistManager = new WaitlistManager();
+    private java.util.List<String> rowKeys = new java.util.ArrayList<>();
 
     public void reload() {
         if (u == null) return;
         tablem.setRowCount(0);
+        rowKeys.clear();
         List<WaitlistEntry> list = waitlistManager.getMyWaitlist(u.getId());
         for (WaitlistEntry e : list) {
             String posStr = (e.getPosition() > 0) ? String.valueOf(e.getPosition()) : "-";
-            String statusDisp = "NOTIFIED".equalsIgnoreCase(e.getStatus()) ? "AVAILABLE" : e.getStatus();
-            tablem.addRow(new Object[] { e.getIsbn(), e.getTitle(), posStr, statusDisp });
+            String statusDisp;
+            if ("NOTIFIED".equalsIgnoreCase(e.getStatus())) {
+                statusDisp = "RESERVED (LOCKED FOR YOU)";
+            } else {
+                statusDisp = e.getStatus();
+            }
+            String key = e.getIsbn();
+            // requested books still have the placeholder key, so show Unknown
+            String isbnDisp = (key != null && key.startsWith("REQ") && key.length() == 13) ? "Unknown" : key;
+            rowKeys.add(key);
+            tablem.addRow(new Object[] { isbnDisp, e.getTitle(), posStr, statusDisp });
         }
         statuslbl.setText("Total Entries: " + list.size());
     }
@@ -63,7 +74,7 @@ public class ReservationsPanel extends JPanel {
                 JOptionPane.showMessageDialog(this, "Please select an entry to leave the waitlist.");
                 return;
             }
-            String isbn = (String) tablem.getValueAt(r, 0);
+            String isbn = rowKeys.get(r);
             String title = (String) tablem.getValueAt(r, 1);
             int opt = JOptionPane.showConfirmDialog(this,
                     "Are you sure you want to leave the waitlist for '" + title + "'?",

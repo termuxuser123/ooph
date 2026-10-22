@@ -9,6 +9,10 @@ import dao.impl.WaitlistDAOImpl;
 import model.User;
 import model.WaitlistEntry;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 public class WaitlistManager {
     private final WaitlistDAO waitlistDAO = new WaitlistDAOImpl();
 
@@ -40,10 +44,7 @@ public class WaitlistManager {
             while (free-- > 0) {
                 User nextUser = waitlistDAO.popNext(isbn);
                 if (nextUser == null) break;
-                System.out.println("[WAITLIST NOTIFICATION] A copy of book (ISBN: " + isbn
-                        + ") is now reserved for: " + nextUser.getName()
-                        + " (" + nextUser.getMail() + ")");
-                NotificationManager.send(nextUser.getId(), "A copy of " + title + " is now available. Please issue it soon.");
+                NotificationManager.send(nextUser.getId(), "A copy of '" + title + "' (ISBN: " + isbn + ") is now locked and reserved for you. Please issue it from the Borrow tab.");
                 notified.add(nextUser);
             }
         } catch (SQLException e) {
@@ -94,5 +95,52 @@ public class WaitlistManager {
             System.out.println("[WAITLIST ERROR] " + e.getMessage());
             return 0;
         }
+    }
+
+    public List<WaitlistEntry> getRequestedBooks() {
+        try {
+            return waitlistDAO.getRequestedBooks();
+        } catch (SQLException e) {
+            System.out.println("[WAITLIST ERROR] Could not get requested books: " + e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    public boolean isUserEligibleToIssue(String isbn, int userId) {
+        try {
+            return waitlistDAO.isUserEligibleToIssue(isbn, userId);
+        } catch (SQLException e) {
+            System.out.println("[WAITLIST ERROR] Could not verify reservation lock: " + e.getMessage());
+            return true;
+        }
+    }
+
+    private static String normalize(String s) {
+        return (s == null) ? "" : s.toLowerCase().replaceAll("[^a-z0-9]", "");
+    }
+
+    // placeholder "ISBN" for a requested book that isn't in the library yet
+    public static String requestKey(String title, String author) {
+        String norm = normalize(title) + "|" + normalize(author);
+        try {
+            byte[] h = MessageDigest.getInstance("SHA-256").digest(norm.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("REQ");
+            for (int i = 0; i < 5; i++) sb.append(String.format("%02x", h[i]));
+            return sb.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    // called when an admin adds a NEW book: move matching requests to the real ISBN, then notify
+    public List<User> notifyBookArrived(String isbn, String title, String author) {
+        try {
+            // Match both exact title+author key and title-based requests
+            waitlistDAO.reassignIsbn(requestKey(title, author), isbn);
+            waitlistDAO.reassignByTitle(title, isbn);
+        } catch (SQLException e) {
+            System.out.println("[WAITLIST ERROR] Could not match book requests: " + e.getMessage());
+        }
+        return notifyNextuser(isbn);
     }
 }

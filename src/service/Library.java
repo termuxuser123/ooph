@@ -61,7 +61,7 @@ public class Library implements Borrowable, Searchable, Reportable {
         }
         inventory.add(item);
         System.out.println("[CATALOG] Added: " + item.getTitle() + " (ISBN: " + item.getIsbn() + ")");
-        waitlistManager.notifyBookArrived(item.getIsbn());
+        waitlistManager.notifyBookArrived(item.getIsbn(), item.getTitle(), item.getAuthor());
     }
 
     public WaitlistManager getWaitlistManager() {
@@ -135,6 +135,13 @@ public class Library implements Borrowable, Searchable, Reportable {
         if (!item.hasAvailableCopy()) {
             System.out.println("[OUT OF STOCK] No copies of '" + item.getTitle() + "' available.");
             waitlistManager.addToWaitlist(item.getIsbn(), item.getTitle(), user);
+            return;
+        }
+
+        // Lock check: If available copies are held/reserved for waitlist user(s),
+        // ensure this user is the one with the lock.
+        if (!waitlistManager.isUserEligibleToIssue(item.getIsbn(), user.getId())) {
+            System.out.println("[RESERVED] '" + item.getTitle() + "' is currently locked and reserved for another user.");
             return;
         }
 

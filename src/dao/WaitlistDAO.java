@@ -22,9 +22,14 @@ public interface WaitlistDAO {
     int availableCopies(String isbn) throws SQLException;
     int notifiedCount(String isbn) throws SQLException;
 
+    boolean isUserEligibleToIssue(String isbn, int userId) throws SQLException;
+
     List<User> findByIsbn(String isbn) throws SQLException;
     List<WaitlistEntry> getMyWaitlist(int userId) throws SQLException;
     String getBookTitle(String isbn) throws SQLException;
 
     void removeAllForIsbn(String isbn) throws SQLException;
+    void reassignIsbn(String oldIsbn, String newIsbn) throws SQLException;
+    void reassignByTitle(String title, String newIsbn) throws SQLException;
+    List<WaitlistEntry> getRequestedBooks() throws SQLException;
 }

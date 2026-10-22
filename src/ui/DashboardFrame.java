@@ -69,9 +69,12 @@ public class DashboardFrame extends JFrame {
 
         LoansPanel loansPanel = isadmin ? null : new LoansPanel(u);
 
+        RequestedBooksPanel requestedBooksPanel = isadmin ? new RequestedBooksPanel(lib) : null;
+
         if (isadmin) {
             // admin tabs
             tp.addTab("Manage Books", new ManageBooksPanel(lib));
+            tp.addTab("Book Requests", requestedBooksPanel);
             tp.addTab("Reports", new ReportPanel(lib));
             tp.addTab("Pending Registrations", new PendingRegistrationsPanel()); 
         } else {
@@ -96,6 +99,8 @@ public class DashboardFrame extends JFrame {
                     waitlistPanel.reload();
                 } else if ("Search Books".equals(title)) {
                     searchPanel.reload();
+                } else if ("Book Requests".equals(title) && requestedBooksPanel != null) {
+                    requestedBooksPanel.reload();
                 } else if ("My Loans".equals(title) && loansPanel != null) {
                     loansPanel.loadloan();
                 }

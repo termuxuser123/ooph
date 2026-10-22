@@ -119,18 +119,7 @@ public class WaitlistDAOImpl implements WaitlistDAO {
 
     @Override
     public void leaveWaitlist(String isbn, int userId) throws SQLException {
-        String sql = "UPDATE waitlist SET status = 'CANCELLED' WHERE isbn = ? AND user_id = ?";
-        try (Connection con = DBConnectionManager.getConnection();
-             PreparedStatement ps = con.prepareStatement(sql)) {
-            ps.setString(1, isbn);
-            ps.setInt(2, userId);
-            int rows = ps.executeUpdate();
-            if (rows == 0) {
-                remove(isbn, userId);
-            }
-        } catch (SQLException e) {
-            remove(isbn, userId);
-        }
+        remove(isbn, userId);
     }
 
     @Override
@@ -202,6 +191,31 @@ public class WaitlistDAOImpl implements WaitlistDAO {
             }
         } catch (SQLException e) {
             return 0;   // schema without status column
+        }
+    }
+
+    @Override
+    public boolean isUserEligibleToIssue(String isbn, int userId) throws SQLException {
+        // If there are copies strictly greater than the number of active locks (NOTIFIED),
+        // then unreserved copies exist and anyone can claim/issue them.
+        int avail = availableCopies(isbn);
+        int notified = notifiedCount(isbn);
+        if (avail > notified) {
+            return true;
+        }
+
+        // All available copies are locked/reserved for waitlist user(s).
+        // Only a user with NOTIFIED status for this ISBN holds a lock and can issue.
+        String sql = "SELECT 1 FROM waitlist WHERE isbn = ? AND user_id = ? AND status = 'NOTIFIED'";
+        try (Connection con = DBConnectionManager.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+            ps.setString(1, isbn);
+            ps.setInt(2, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            return true; // fallback if status column is missing
         }
     }
 
@@ -343,5 +357,98 @@ public class WaitlistDAOImpl implements WaitlistDAO {
             default:
                 throw new SQLException("Unknown role: " + role);
         }
+    }
+
+    @Override
+    public void reassignIsbn(String oldIsbn, String newIsbn) throws SQLException {
+        try (Connection con = DBConnectionManager.getConnection()) {
+            con.setAutoCommit(false);
+            try {
+                // UPDATE IGNORE skips users who already have a row for the new ISBN
+                try (PreparedStatement ps = con.prepareStatement(
+                        "UPDATE IGNORE waitlist SET isbn = ? WHERE isbn = ?")) {
+                    ps.setString(1, newIsbn);
+                    ps.setString(2, oldIsbn);
+                    ps.executeUpdate();
+                }
+                // remove any leftovers (the skipped duplicates)
+                try (PreparedStatement ps = con.prepareStatement(
+                        "DELETE FROM waitlist WHERE isbn = ?")) {
+                    ps.setString(1, oldIsbn);
+                    ps.executeUpdate();
+                }
+                con.commit();
+            } catch (SQLException e) {
+                con.rollback();
+                throw e;
+            } finally {
+                con.setAutoCommit(true);
+            }
+        }
+    }
+
+    @Override
+    public void reassignByTitle(String title, String newIsbn) throws SQLException {
+        if (title == null || title.trim().isEmpty()) return;
+        try (Connection con = DBConnectionManager.getConnection()) {
+            con.setAutoCommit(false);
+            try {
+                // Find all placeholder waitlist keys where title matches (case-insensitive)
+                String findSql = "SELECT DISTINCT isbn FROM waitlist WHERE LOWER(TRIM(title)) = LOWER(TRIM(?)) AND isbn LIKE 'REQ%'";
+                List<String> matchedKeys = new ArrayList<>();
+                try (PreparedStatement ps = con.prepareStatement(findSql)) {
+                    ps.setString(1, title);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            matchedKeys.add(rs.getString("isbn"));
+                        }
+                    }
+                }
+
+                for (String oldKey : matchedKeys) {
+                    try (PreparedStatement ps = con.prepareStatement(
+                            "UPDATE IGNORE waitlist SET isbn = ? WHERE isbn = ?")) {
+                        ps.setString(1, newIsbn);
+                        ps.setString(2, oldKey);
+                        ps.executeUpdate();
+                    }
+                    try (PreparedStatement ps = con.prepareStatement(
+                            "DELETE FROM waitlist WHERE isbn = ?")) {
+                        ps.setString(1, oldKey);
+                        ps.executeUpdate();
+                    }
+                }
+                con.commit();
+            } catch (SQLException e) {
+                con.rollback();
+                throw e;
+            } finally {
+                con.setAutoCommit(true);
+            }
+        }
+    }
+
+    @Override
+    public List<WaitlistEntry> getRequestedBooks() throws SQLException {
+        // Query distinct requested books (placeholder isbn starts with REQ) with requester count
+        String sql = "SELECT isbn, COALESCE(title, 'Unknown Title') AS display_title, "
+                   + "COUNT(*) AS req_count, MIN(request_date) AS earliest_date "
+                   + "FROM waitlist WHERE isbn LIKE 'REQ%' "
+                   + "GROUP BY isbn, title "
+                   + "ORDER BY earliest_date ASC";
+        List<WaitlistEntry> list = new ArrayList<>();
+        try (Connection con = DBConnectionManager.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                String isbn = rs.getString("isbn");
+                String title = rs.getString("display_title");
+                int count = rs.getInt("req_count");
+                Date d = rs.getDate("earliest_date");
+                LocalDate reqDate = (d != null) ? d.toLocalDate() : LocalDate.now();
+                list.add(new WaitlistEntry(isbn, title, "REQUESTED", count, reqDate));
+            }
+        }
+        return list;
     }
 }

@@ -127,32 +127,33 @@ public class BookSearchPanel extends JPanel {
 
         // Request a Book dialog for books not in library yet
         requestbtn.addActionListener(e -> {
-            JTextField isbnF = new JTextField();
-            JTextField titleF = new JTextField();
-            Object[] fields = { "ISBN:", isbnF, "Book Title:", titleF };
-            int res = JOptionPane.showConfirmDialog(this, fields, "Request a Book", JOptionPane.OK_CANCEL_OPTION);
-            if (res == JOptionPane.OK_OPTION) {
-                String reqIsbn = isbnF.getText().trim();
-                String reqTitle = titleF.getText().trim();
-                if (!reqIsbn.isEmpty() && !reqTitle.isEmpty()) {
-                    boolean inCatalog = false;
-                    for (model.LibraryItem it : lib.search(reqIsbn)) {
-                        if (it.getIsbn().equalsIgnoreCase(reqIsbn)) { inCatalog = true; break; }
-                    }
-                    if (inCatalog) {
-                        JOptionPane.showMessageDialog(this, "This book is already in the library. Search for it and borrow it or join its waitlist.");
-                    } else if (new WaitlistManager().addToWaitlist(reqIsbn, reqTitle, u)) {
-                        JOptionPane.showMessageDialog(this, "Book '" + reqTitle + "' requested and added to your waitlist!");
-                        onWaitlistChanged.run();
-                    } else {
-                        JOptionPane.showMessageDialog(this, "Could not submit the request. Please try again.",
-                                "Request a Book", JOptionPane.ERROR_MESSAGE);
-                    }
-                } else {
-                    JOptionPane.showMessageDialog(this, "Both ISBN and Title are required.");
+        JTextField titleF = new JTextField();
+        JTextField authorF = new JTextField();
+        Object[] fields = { "Book Title:", titleF, "Author:", authorF };
+        int res = JOptionPane.showConfirmDialog(this, fields, "Request a Book", JOptionPane.OK_CANCEL_OPTION);
+        if (res == JOptionPane.OK_OPTION) {
+            String reqTitle = titleF.getText().trim();
+            String reqAuthor = authorF.getText().trim();
+            if (!reqTitle.isEmpty() && !reqAuthor.isEmpty()) {
+                String key = WaitlistManager.requestKey(reqTitle, reqAuthor);
+                boolean inCatalog = false;
+                for (model.LibraryItem it : lib.search(reqTitle)) {
+                    if (WaitlistManager.requestKey(it.getTitle(), it.getAuthor()).equals(key)) { inCatalog = true; break; }
                 }
+                if (inCatalog) {
+                    JOptionPane.showMessageDialog(this, "This book is already in the library. Search for it and borrow it or join its waitlist.");
+                } else if (new WaitlistManager().addToWaitlist(key, reqTitle, u)) {
+                    JOptionPane.showMessageDialog(this, "Book '" + reqTitle + "' requested and added to your waitlist!");
+                    onWaitlistChanged.run();
+                } else {
+                    JOptionPane.showMessageDialog(this, "Could not submit the request. Please try again.",
+                            "Request a Book", JOptionPane.ERROR_MESSAGE);
+                }
+            } else {
+                JOptionPane.showMessageDialog(this, "Both Title and Author are required.");
             }
-        });
+        }
+    });
 
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));

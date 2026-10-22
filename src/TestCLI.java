@@ -42,8 +42,19 @@ public class TestCLI {
         System.out.println("\n--- 4. A borrows the same book again (expect 'already has') ---");
         library.issue(a, book);
 
-        System.out.println("\n--- 5. A returns the textbook (expect success + B notified) ---");
+        System.out.println("\n--- 5. A returns the textbook (expect success + B notified & locked) ---");
         library.returnItem(a, book);
+
+        // Register user C who was not on the waitlist
+        String emailC = "c" + stamp + "@test.com";
+        userDAO.insert(new Student("Test C", emailC, 0, "9876543212", "pass123"));
+        User c = userDAO.authenticate(emailC, "pass123");
+
+        System.out.println("\n--- 5b. C tries to borrow the returned book (expect REFUSED / LOCKED for B) ---");
+        library.issue(c, book);
+
+        System.out.println("\n--- 5c. B (who holds the reservation lock) borrows the book (expect SUCCESS) ---");
+        library.issue(b, book);
 
         System.out.println("\n--- 6. A returns it again (expect 'no active loan') ---");
         library.returnItem(a, book);
